@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: sms-api-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        scope: runtime
+      - key: JWT_SECRET
+        scope: runtime
+        sync: false
+      - key: ADMIN_USERNAME
+        scope: runtime
+        sync: false
+      - key: ADMIN_PASSWORD
+        scope: runtime
+        sync: false
+      - key: ADMIN_JWT_SECRET
+        scope: runtime
+        sync: false
+      - key: SERVER_HOST
+        fromService:
+          name: sms-api-dashboard
+          type: web
+          property: host

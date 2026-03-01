@@ -1,0 +1,290 @@
+﻿// websocket.js
+// Manages the WebSocket server that Android SMS devices connect to
+
+const { WebSocketServer } = require('ws');
+const { dbRun, dbGet, dbAll } = require('./database');
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Config
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const PING_INTERVAL_MS  = 30000; // Send ping every 30 seconds
+const AUTH_TIMEOUT_MS   = 15000; // Disconnect if not authenticated within 15s
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Global reference to the currently connected
+// and authenticated Android device socket
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let androidDeviceSocket = null;
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Returns the active Android device socket
+// Checks that the socket is actually still OPEN
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function getDeviceSocket() {
+  if (androidDeviceSocket && androidDeviceSocket.readyState !== 1 /* OPEN */) {
+    console.warn('[WS] Stale socket detected â€” clearing reference.');
+    androidDeviceSocket = null;
+  }
+  return androidDeviceSocket;
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Flush all pending SMS to the device
+// Called automatically when a device reconnects
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+async function flushPendingSms(ws) {
+  try {
+    const pending = await dbAll(
+      `SELECT s.id, s.receiver, s.message, g.group_name
+       FROM sms_logs s
+       JOIN groups g ON g.id = s.group_id
+       WHERE s.status = 'pending'
+       ORDER BY s.created_at ASC`
+    );
+
+    if (pending.length === 0) {
+      console.log('[WS] No pending SMS to flush.');
+      return;
+    }
+
+    console.log(`[WS] Flushing ${pending.length} pending SMS to device...`);
+
+    for (const sms of pending) {
+      if (ws.readyState !== 1 /* OPEN */) {
+        console.warn('[WS] Socket closed during flush â€” stopping.');
+        break;
+      }
+      const formattedMessage = `[${sms.group_name}]\n${sms.message}`;
+      ws.send(JSON.stringify({
+        type: 'send_sms',
+        smsId: sms.id,
+        to: sms.receiver,
+        message: formattedMessage,
+      }));
+      console.log(`[WS] Flushed pending SMS #${sms.id} â†’ ${sms.receiver}`);
+    }
+  } catch (err) {
+    console.error('[WS] flushPendingSms error:', err.message);
+  }
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Mark device offline in DB
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+async function markDeviceOffline(deviceToken) {
+  if (!deviceToken) return;
+  try {
+    await dbRun(
+      'UPDATE device SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE device_token = ?',
+      [deviceToken]
+    );
+    console.log(`[WS] Device "${deviceToken}" marked offline.`);
+  } catch (err) {
+    console.error('[WS] Failed to mark device offline:', err.message);
+  }
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Setup WebSocket Server
+// Attaches to the existing HTTP server instance
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function setupWebSocket(server) {
+  const wss = new WebSocketServer({ server, path: '/ws' });
+
+  console.log('[WS] WebSocket server listening on /ws');
+
+  // â”€â”€ Global ping interval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Ping all authenticated clients on a fixed schedule.
+  // If a client misses a pong, it is terminated.
+  const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (!ws._authenticated) return; // Skip unauthenticated clients
+
+      if (ws._missedPings >= 2) {
+        console.warn(`[WS] Device "${ws._deviceToken}" missed ${ws._missedPings} pings â€” terminating.`);
+        ws.terminate(); // Force-close the dead socket
+        return;
+      }
+
+      ws._missedPings = (ws._missedPings || 0) + 1;
+      ws.ping(); // Native WebSocket ping frame (not JSON)
+    });
+  }, PING_INTERVAL_MS);
+
+  // Clean up interval when server closes
+  wss.on('close', () => clearInterval(pingInterval));
+
+  wss.on('connection', (ws, req) => {
+    const clientIP = req.socket.remoteAddress;
+    console.log(`[WS] New connection from ${clientIP} â€” waiting for auth...`);
+
+    // Per-connection state
+    ws._authenticated = false;
+    ws._deviceToken   = null;
+    ws._missedPings   = 0;
+
+    // â”€â”€ Auth timeout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // If not authenticated within AUTH_TIMEOUT_MS, close the connection
+    const authTimeout = setTimeout(() => {
+      if (!ws._authenticated) {
+        console.warn(`[WS] Connection from ${clientIP} timed out (no auth).`);
+        ws.send(JSON.stringify({ type: 'error', message: 'Authentication timeout. Send auth message within 15 seconds.' }));
+        ws.terminate();
+      }
+    }, AUTH_TIMEOUT_MS);
+
+    // â”€â”€ Pong handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Reset missed ping counter when device responds
+    ws.on('pong', () => {
+      ws._missedPings = 0;
+    });
+
+    // â”€â”€ Handle incoming messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    ws.on('message', async (rawData) => {
+      let data;
+
+      // Parse JSON safely
+      try {
+        data = JSON.parse(rawData.toString());
+      } catch {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON format.' }));
+        return;
+      }
+
+      // â”€â”€ Auth handshake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      if (data.type === 'auth') {
+        if (!data.deviceToken) {
+          ws.send(JSON.stringify({ type: 'error', message: 'deviceToken is required.' }));
+          return;
+        }
+
+        try {
+          // Look up the device token in the database
+          const device = await dbGet(
+            'SELECT * FROM device WHERE device_token = ?',
+            [data.deviceToken]
+          );
+
+          if (!device) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Unknown device token. Register the device first.' }));
+            ws.terminate();
+            return;
+          }
+
+          // Cancel auth timeout â€” device authenticated in time
+          clearTimeout(authTimeout);
+
+          // If another socket was already authenticated, disconnect it cleanly
+          if (androidDeviceSocket && androidDeviceSocket !== ws && androidDeviceSocket.readyState === 1) {
+            console.warn('[WS] New device connected â€” closing previous session.');
+            androidDeviceSocket.send(JSON.stringify({ type: 'error', message: 'Replaced by a new connection.' }));
+            androidDeviceSocket.terminate();
+          }
+
+          // Mark connection as authenticated
+          ws._authenticated = true;
+          ws._deviceToken   = data.deviceToken;
+          ws._missedPings   = 0;
+          androidDeviceSocket = ws;
+
+          await dbRun(
+            'UPDATE device SET is_online = 1, last_seen = CURRENT_TIMESTAMP WHERE device_token = ?',
+            [data.deviceToken]
+          );
+
+          ws.send(JSON.stringify({ type: 'auth_success', message: 'Device authenticated and online.' }));
+          console.log(`[WS] Device authenticated: ${data.deviceToken} from ${clientIP}`);
+
+          // Flush any SMS that were queued while device was offline
+          // Small delay so the client finishes processing auth_success first
+          setTimeout(() => flushPendingSms(ws), 1000);
+
+        } catch (err) {
+          console.error('[WS] Auth error:', err.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed.' }));
+        }
+        return;
+      }
+
+      // â”€â”€ Reject unauthenticated messages â”€â”€â”€â”€â”€â”€â”€â”€
+      if (!ws._authenticated) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated. Send auth message first.' }));
+        return;
+      }
+
+      // â”€â”€ Ping from client (JSON-level keepalive) â”€â”€
+      // Some Android clients send a JSON ping instead of native WS ping
+      if (data.type === 'ping') {
+        ws._missedPings = 0;
+        ws.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+
+      // â”€â”€ SMS status update from Android device â”€â”€
+      if (data.type === 'sms_status') {
+        const rawId = data.smsId;
+        const status = data.status;
+
+        // smsId may arrive as integer (1) or string ("1") from Android — handle both
+        if (rawId === undefined || rawId === null || !status) {
+          ws.send(JSON.stringify({ type: 'error', message: 'smsId and status are required.' }));
+          return;
+        }
+
+        const smsId = parseInt(rawId, 10);
+        if (isNaN(smsId) || smsId <= 0) {
+          ws.send(JSON.stringify({ type: 'error', message: 'smsId must be a positive integer.' }));
+          return;
+        }
+
+        const allowedStatuses = ['sent', 'failed', 'delivered'];
+        if (!allowedStatuses.includes(status)) {
+          ws.send(JSON.stringify({ type: 'error', message: `Invalid status. Use: ${allowedStatuses.join(', ')}` }));
+          return;
+        }
+
+        try {
+          const result = await dbRun(
+            'UPDATE sms_logs SET status = ? WHERE id = ?',
+            [status, smsId]
+          );
+
+          if (result.changes === 0) {
+            ws.send(JSON.stringify({ type: 'error', message: `SMS log ID ${smsId} not found.` }));
+          } else {
+            console.log(`[WS] SMS #${smsId} status updated to: ${status}`);
+            ws.send(JSON.stringify({ type: 'status_updated', smsId, status }));
+          }
+        } catch (err) {
+          console.error('[WS] Status update error:', err.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Failed to update SMS status.' }));
+        }
+        return;
+      }
+
+      // â”€â”€ Unknown message type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: "${data.type}"` }));
+    });
+
+    // â”€â”€ Connection closed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    ws.on('close', async (code, reason) => {
+      clearTimeout(authTimeout);
+      console.log(`[WS] Connection closed from ${clientIP} â€” code: ${code}`);
+
+      if (ws._authenticated && ws === androidDeviceSocket) {
+        androidDeviceSocket = null;
+        await markDeviceOffline(ws._deviceToken);
+      }
+    });
+
+    // â”€â”€ Socket error â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    ws.on('error', (err) => {
+      console.error(`[WS] Socket error from ${clientIP}:`, err.message);
+      // 'close' event will fire after error â€” cleanup happens there
+    });
+  });
+
+  return wss;
+}
+
+module.exports = { setupWebSocket, getDeviceSocket };

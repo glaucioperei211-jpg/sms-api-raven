@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — SMS Gateway</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #080808;
+      color: #d0d0d0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    .navbar {
+      background: linear-gradient(135deg, #0a0a0a, #1a0d00);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.8);
+      border-bottom: 1px solid #1e1000;
+    }
+
+    .stat-card {
+      border: 1px solid #1e1e1e;
+      border-radius: 14px;
+      background: #111;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+
+    .stat-icon {
+      width: 50px; height: 50px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      background: #1a1a1a !important;
+    }
+
+    .card {
+      border: 1px solid #1e1e1e;
+      border-radius: 14px;
+      background: #111;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .text-muted { color: #555 !important; }
+    .fw-semibold, .fw-bold, h5, h6, label { color: #ccc !important; }
+
+    .table { --bs-table-bg: transparent; color: #ccc; }
+    .table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555 !important; border-color: #1e1e1e; }
+    .table td { vertical-align: middle; font-size: 0.875rem; border-color: #1a1a1a; }
+    .table-hover > tbody > tr:hover > td { background: #161616; }
+    .table thead { border-bottom: 1px solid #222; }
+
+    .badge-pending   { background: #b8860b; color: #000; }
+    .badge-sent      { background: #0a58ca; }
+    .badge-delivered { background: #146c43; }
+    .badge-failed    { background: #b02a37; }
+    .badge-active    { background: #146c43; }
+    .badge-disabled  { background: #3a3a3a; }
+
+    .nav-tabs { border-bottom: 1px solid #222; }
+    .nav-tabs .nav-link { color: #666; font-weight: 500; border: none; border-radius: 0; padding: 10px 18px; }
+    .nav-tabs .nav-link:hover { color: #aaa; background: #151515; }
+    .nav-tabs .nav-link.active { color: #ff6b00; border-bottom: 2px solid #ff6b00; background: transparent; }
+
+    .device-online  { color: #22c55e; font-weight: 600; }
+    .device-offline { color: #ef4444; font-weight: 600; }
+
+    .api-key-small { font-family: monospace; font-size: 0.72rem; word-break: break-all; color: #7ec8e3; }
+
+    .form-control, .form-select, textarea.form-control {
+      background-color: #1a1a1a;
+      border: 1px solid #2e2e2e;
+      color: #e0e0e0;
+      border-radius: 8px;
+    }
+    .form-control:focus, .form-select:focus, textarea.form-control:focus {
+      background-color: #212121;
+      border-color: #ff6b00;
+      color: #fff;
+      box-shadow: 0 0 0 0.2rem rgba(255,107,0,0.2);
+    }
+    .form-control::placeholder { color: #444; }
+    .form-text { color: #555 !important; }
+
+    .input-group .form-control { border-right: none; }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #ff6b00, #cc4400);
+      border: none; color: #fff; font-weight: 600;
+    }
+    .btn-warning:hover { background: linear-gradient(135deg, #cc4400, #aa3300); color: #fff; }
+    .btn-outline-secondary { border-color: #333; color: #888; }
+    .btn-outline-secondary:hover { background: #1e1e1e; color: #fff; border-color: #555; }
+    .btn-outline-warning { border-color: #cc5500; color: #ff8833; }
+    .btn-outline-warning:hover { background: #cc5500; color: #fff; }
+    .btn-outline-success { border-color: #146c43; color: #22c55e; }
+    .btn-outline-success:hover { background: #146c43; color: #fff; }
+    .btn-outline-danger { border-color: #7a1a1a; color: #ef4444; }
+    .btn-outline-danger:hover { background: #7a1a1a; color: #fff; }
+
+    .modal-content { background: #111; border: 1px solid #333; border-radius: 14px; }
+    .modal-header { border-bottom: 1px solid #222; }
+    .modal-footer { border-top: 1px solid #222; }
+    .btn-close { filter: invert(1); }
+
+    .alert-info { background: #0a1a2a; border-color: #0d3050; color: #7ec8e3; }
+    code { color: #7ec8e3; background: #1a1a1a; padding: 1px 5px; border-radius: 4px; }
+
+    .bg-light { background: #1a1a1a !important; }
+
+    .card .bg-dark { background: #0a0a0a !important; border: 1px solid #222; border-radius: 8px; }
+
+    .spinner-border.text-warning { color: #ff6b00 !important; }
+
+    .footer-credits {
+      text-align: center;
+      padding: 20px 0 12px;
+      color: #2a2a2a;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      border-top: 1px solid #131313;
+      margin-top: 32px;
+    }
+    .footer-credits strong { color: #3a3a3a; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navbar ──────────────────────────────────── -->
+<nav class="navbar navbar-dark px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5">⚙️ SMS Gateway — Admin Panel</span>
+  <div class="d-flex align-items-center gap-3">
+    <span class="badge bg-warning text-dark">ADMINISTRATOR</span>
+    <button class="btn btn-outline-light btn-sm" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- ── Content ─────────────────────────────────── -->
+<div class="container-fluid py-4 px-4">
+
+  <!-- Loading -->
+  <div id="loadingState" class="text-center py-5">
+    <div class="spinner-border text-warning" role="status"></div>
+    <p class="text-muted mt-3">Loading admin panel...</p>
+  </div>
+
+  <div id="adminContent" style="display:none;">
+
+    <!-- ── Stat Cards ──────────────────────────── -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-xl-3">
+        <div class="card stat-card p-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon" style="background:#fff3e0;">👥</div>
+            <div>
+              <div class="text-muted small">Total Groups</div>
+              <div class="fw-bold fs-4" id="statTotal">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-xl-3">
+        <div class="card stat-card p-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon" style="background:#e8f8ef;">✅</div>
+            <div>
+              <div class="text-muted small">Active Groups</div>
+              <div class="fw-bold fs-4 text-success" id="statActive">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-xl-3">
+        <div class="card stat-card p-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon" style="background:#e8f4fd;">📨</div>
+            <div>
+              <div class="text-muted small">Total SMS Sent</div>
+              <div class="fw-bold fs-4 text-primary" id="statSms">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-xl-3">
+        <div class="card stat-card p-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon" style="background:#fce8e8;">📱</div>
+            <div>
+              <div class="text-muted small">Android Device</div>
+              <div class="fw-bold" id="statDevice">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Android WebSocket Connection Info ─── -->
+    <div class="card mb-4 p-3">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <h6 class="fw-bold mb-1">📱 Android WebSocket Connection URL</h6>
+          <p class="text-muted small mb-2">
+            Use this URL in your Android SMS app to connect to this server.
+            <strong class="text-warning">⚠️ "localhost" = the phone itself, not your PC.</strong>
+            Replace with your PC's local IP if on the same Wi-Fi.
+          </p>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="loadWsInfo()">🔄 Refresh</button>
+      </div>
+
+      <div class="row g-3 align-items-start">
+        <!-- WS URL display + copy -->
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold text-muted">Current WebSocket URL</label>
+          <div class="input-group">
+            <input type="text" class="form-control font-monospace" id="wsUrlDisplay"
+              value="Loading..." readonly style="font-size:0.85rem;" />
+            <button class="btn btn-warning" onclick="copyWsUrl()">📋 Copy</button>
+          </div>
+          <div class="mt-2 d-flex gap-2 align-items-center">
+            <span class="small text-muted">Device:</span>
+            <span id="wsDeviceStatus" class="small fw-semibold">checking...</span>
+            <span class="text-muted small" id="wsLastSeen"></span>
+          </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold text-muted">Connection Tips</label>
+          <div class="bg-dark text-light rounded p-2" style="font-size:0.75rem; font-family:monospace;">
+            <div id="wsHint1" class="text-success">// Same Wi-Fi</div>
+            <div id="wsHint2" class="text-info">// ngrok tunnel</div>
+            <div id="wsHint3" class="text-warning">// Remote domain</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Server host config note -->
+      <div class="alert alert-info mt-3 mb-0 py-2 small">
+        💡 To change the displayed URL, set <code>SERVER_HOST</code> in <code>server.config.js</code>
+        to your PC's local IP (e.g. <code>192.168.1.100</code>), then restart the server.
+      </div>
+    </div>
+
+    <!-- ── Tabs ───────────────────────────────── -->
+    <div class="card p-3">
+      <ul class="nav nav-tabs mb-4" id="adminTabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="#" onclick="switchTab('groups', this)">👥 Groups</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" onclick="switchTab('logs', this)">📋 SMS Logs</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" onclick="switchTab('devices', this)">📱 Devices</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" onclick="switchTab('send', this)">✉️ Send SMS</a>
+        </li>
+      </ul>
+
+      <!-- ─── GROUPS TAB ───────────────────── -->
+      <div id="tab-groups">
+        <div id="groupAlertBox" class="alert d-none mb-3"></div>
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Group Name</th>
+                <th>Email</th>
+                <th>API Key</th>
+                <th>SMS Used / Limit</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="groupsBody">
+              <tr><td colspan="7" class="text-center py-4 text-muted">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── LOGS TAB ─────────────────────── -->
+      <div id="tab-logs" style="display:none;">
+        <div class="d-flex gap-2 mb-3">
+          <select id="logGroupFilter" class="form-select form-select-sm" style="max-width:220px;" onchange="loadLogs()">
+            <option value="">All Groups</option>
+          </select>
+          <button class="btn btn-outline-secondary btn-sm" onclick="loadLogs()">🔄 Refresh</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Group</th>
+                <th>Receiver</th>
+                <th>Message</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="logsBody">
+              <tr><td colspan="6" class="text-center py-4 text-muted">Select a tab to load.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── DEVICES TAB ──────────────────── -->
+      <div id="tab-devices" style="display:none;">
+        <div id="deviceAlertBox" class="alert d-none mb-3"></div>
+
+        <!-- Register new device -->
+        <div class="card bg-light border-0 p-3 mb-4">
+          <h6 class="fw-bold mb-3">Register New Android Device</h6>
+          <div class="input-group" style="max-width:400px;">
+            <input type="text" class="form-control" id="newDeviceToken" placeholder="Enter device token" />
+            <button class="btn btn-warning" onclick="registerDevice()">Register</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Device Token</th>
+                <th>Status</th>
+                <th>Last Seen</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="devicesBody">
+              <tr><td colspan="5" class="text-center py-4 text-muted">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── SEND SMS TAB ─────────────────── -->
+      <div id="tab-send" style="display:none;">
+        <div id="sendAlertBox" class="alert d-none mb-3"></div>
+        <div style="max-width:520px;">
+          <h6 class="fw-bold mb-3">Send SMS on Behalf of a Group</h6>
+          <form id="adminSendForm" novalidate>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Select Group</label>
+              <select class="form-select" id="sendGroupId" required>
+                <option value="">— choose a group —</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Recipient Number</label>
+              <input type="text" class="form-control" id="sendTo" placeholder="+639123456789" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Message</label>
+              <textarea class="form-control" id="sendMessage" rows="4" maxlength="160" placeholder="Type your message..."></textarea>
+              <div class="form-text text-warning">⚠️ The selected group's name will be prepended automatically.</div>
+            </div>
+            <button type="submit" class="btn btn-warning px-4" id="sendBtn">
+              <span class="spinner-border spinner-border-sm me-2" id="sendSpinner" style="display:none;"></span>
+              Send SMS
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div><!-- .card (tabs) -->
+  </div><!-- #adminContent -->
+
+  <div class="footer-credits">
+    Created by <strong>Raven John Climaco</strong> &mdash; SMS Gateway &copy; 2025
+  </div>
+</div><!-- .container -->
+
+<!-- ── Edit Limit Modal ──────────────────────── -->
+<div class="modal fade" id="limitModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-bold">Edit SMS Limit</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editGroupId" />
+        <label class="form-label">New SMS Limit</label>
+        <input type="number" class="form-control" id="editLimitValue" min="0" placeholder="e.g. 500" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-warning btn-sm" onclick="saveLimitChange()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const token = localStorage.getItem('admin_token');
+  if (!token) window.location.href = '/admin-login.html';
+
+  // ── Auth header ────────────────────────────
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+
+  // ── Tab handling ───────────────────────────
+  const tabs = ['groups', 'logs', 'devices', 'send'];
+  function switchTab(name, el) {
+    tabs.forEach(t => {
+      document.getElementById(`tab-${t}`).style.display = t === name ? 'block' : 'none';
+    });
+    document.querySelectorAll('#adminTabs .nav-link').forEach(a => a.classList.remove('active'));
+    if (el) el.classList.add('active');
+
+    if (name === 'groups')  loadGroups();
+    if (name === 'logs')    loadLogs();
+    if (name === 'devices') loadDevices();
+  }
+
+  // ── Load WebSocket info ────────────────────
+  async function loadWsInfo() {
+    try {
+      const res  = await fetch('/admin/api/ws-info', { headers: authHeaders });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      document.getElementById('wsUrlDisplay').value = data.wsUrl;
+
+      const statusEl   = document.getElementById('wsDeviceStatus');
+      const lastSeenEl = document.getElementById('wsLastSeen');
+
+      statusEl.innerHTML = data.deviceConnected
+        ? '<span class="device-online">🟢 Connected</span>'
+        : '<span class="device-offline">🔴 Not connected</span>';
+
+      lastSeenEl.textContent = data.lastSeen ? `· Last seen: ${fmt(data.lastSeen)}` : '';
+
+      if (data.hints) {
+        document.getElementById('wsHint1').textContent = `ws://192.168.x.x:3000/ws   // ${data.hints.localhost.split('(')[1]?.replace(')','') || 'Same Wi-Fi'}`;
+        document.getElementById('wsHint2').textContent = `wss://abc123.ngrok.io/ws   // Outside network (ngrok)`;
+        document.getElementById('wsHint3').textContent = `wss://yourdomain.com/ws    // Public server (HTTPS)`;
+      }
+    } catch (err) {
+      console.error('WS info load error:', err);
+    }
+  }
+
+  function copyWsUrl() {
+    const url = document.getElementById('wsUrlDisplay').value;
+    if (!url || url === 'Loading...') return;
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`Copied!\n\n${url}\n\nPaste this into your Android app's WebSocket URL field.`);
+    });
+  }
+
+  // ── Load overview ──────────────────────────
+  async function loadOverview() {
+    try {
+      const res  = await fetch('/admin/api/overview', { headers: authHeaders });
+      if (res.status === 401) { logout(); return; }
+      const data = await res.json();
+
+      document.getElementById('statTotal').textContent  = data.totalGroups;
+      document.getElementById('statActive').textContent = data.activeGroups;
+      document.getElementById('statSms').textContent    = data.totalSms;
+
+      const dev = data.device;
+      document.getElementById('statDevice').innerHTML = dev && dev.is_online
+        ? '<span class="device-online">🟢 Online</span>'
+        : '<span class="device-offline">🔴 Offline</span>';
+
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('adminContent').style.display = 'block';
+    } catch (err) {
+      alert('Cannot connect to server.');
+    }
+  }
+
+  // ── Load groups ────────────────────────────
+  async function loadGroups() {
+    const tbody = document.getElementById('groupsBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></td></tr>';
+    try {
+      const res  = await fetch('/admin/api/groups', { headers: authHeaders });
+      const data = await res.json();
+
+      // Also populate send filter dropdowns
+      const sendSelect = document.getElementById('sendGroupId');
+      sendSelect.innerHTML = '<option value="">— choose a group —</option>';
+      const logFilter = document.getElementById('logGroupFilter');
+      logFilter.innerHTML = '<option value="">All Groups</option>';
+
+      if (!data.groups || data.groups.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No groups registered yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.groups.map(g => `
+        <tr>
+          <td class="text-muted">#${g.id}</td>
+          <td class="fw-semibold">${esc(g.group_name)}</td>
+          <td class="text-muted small">${esc(g.email)}</td>
+          <td><span class="api-key-small text-muted">${esc(g.api_key.slice(0, 16))}...</span></td>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span>${g.sms_used} / ${g.sms_limit}</span>
+              <button class="btn btn-outline-secondary btn-sm py-0 px-1" style="font-size:0.7rem;"
+                onclick="openLimitModal(${g.id}, ${g.sms_limit})">✏️</button>
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-${g.is_active ? 'active' : 'disabled'}">
+              ${g.is_active ? 'Active' : 'Disabled'}
+            </span>
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-${g.is_active ? 'warning' : 'success'}"
+                onclick="toggleGroup(${g.id})">
+                ${g.is_active ? 'Disable' : 'Enable'}
+              </button>
+              <button class="btn btn-sm btn-outline-danger"
+                onclick="deleteGroup(${g.id}, '${esc(g.group_name)}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      // Populate dropdowns
+      data.groups.forEach(g => {
+        sendSelect.innerHTML += `<option value="${g.id}">${esc(g.group_name)}</option>`;
+        logFilter.innerHTML  += `<option value="${g.id}">${esc(g.group_name)}</option>`;
+      });
+
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load groups.</td></tr>';
+    }
+  }
+
+  // ── Toggle group active/disabled ───────────
+  async function toggleGroup(id) {
+    try {
+      const res  = await fetch(`/admin/api/groups/${id}/toggle`, { method: 'PATCH', headers: authHeaders });
+      const data = await res.json();
+      showGroupAlert(data.message || data.error, res.ok ? 'success' : 'danger');
+      loadGroups();
+      loadOverview();
+    } catch { showGroupAlert('Network error.', 'danger'); }
+  }
+
+  // ── Delete group ───────────────────────────
+  async function deleteGroup(id, name) {
+    if (!confirm(`⚠️ Permanently delete group "${name}" and all its SMS logs?\n\nThis cannot be undone!`)) return;
+    try {
+      const res  = await fetch(`/admin/api/groups/${id}`, { method: 'DELETE', headers: authHeaders });
+      const data = await res.json();
+      showGroupAlert(data.message || data.error, res.ok ? 'success' : 'danger');
+      loadGroups();
+      loadOverview();
+    } catch { showGroupAlert('Network error.', 'danger'); }
+  }
+
+  // ── Limit modal ────────────────────────────
+  const limitModal = new bootstrap.Modal(document.getElementById('limitModal'));
+  function openLimitModal(id, currentLimit) {
+    document.getElementById('editGroupId').value    = id;
+    document.getElementById('editLimitValue').value = currentLimit;
+    limitModal.show();
+  }
+  async function saveLimitChange() {
+    const id    = document.getElementById('editGroupId').value;
+    const limit = document.getElementById('editLimitValue').value;
+    try {
+      const res  = await fetch(`/admin/api/groups/${id}/limit`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ sms_limit: parseInt(limit) }),
+      });
+      const data = await res.json();
+      limitModal.hide();
+      showGroupAlert(data.message || data.error, res.ok ? 'success' : 'danger');
+      loadGroups();
+    } catch { showGroupAlert('Network error.', 'danger'); }
+  }
+
+  // ── Load logs ──────────────────────────────
+  async function loadLogs() {
+    const tbody   = document.getElementById('logsBody');
+    const groupId = document.getElementById('logGroupFilter').value;
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></td></tr>';
+    try {
+      const url = `/admin/api/logs${groupId ? `?group_id=${groupId}` : ''}`;
+      const res  = await fetch(url, { headers: authHeaders });
+      const data = await res.json();
+
+      if (!data.logs || data.logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No SMS logs found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.logs.map(log => `
+        <tr>
+          <td class="text-muted">#${log.id}</td>
+          <td class="fw-semibold small">${esc(log.group_name)}</td>
+          <td><code>${esc(log.receiver)}</code></td>
+          <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(log.message)}">
+            ${esc(log.message)}
+          </td>
+          <td><span class="badge badge-${log.status}">${log.status}</span></td>
+          <td class="text-muted small">${fmt(log.created_at)}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load logs.</td></tr>';
+    }
+  }
+
+  // ── Load devices ───────────────────────────
+  async function loadDevices() {
+    const tbody = document.getElementById('devicesBody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></td></tr>';
+    try {
+      const res  = await fetch('/admin/api/devices', { headers: authHeaders });
+      const data = await res.json();
+
+      if (!data.devices || data.devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No devices registered.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.devices.map(d => `
+        <tr>
+          <td>#${d.id}</td>
+          <td><code style="font-size:0.78rem;">${esc(d.device_token)}</code></td>
+          <td>${d.is_online
+            ? '<span class="device-online">🟢 Online</span>'
+            : '<span class="device-offline">🔴 Offline</span>'}</td>
+          <td class="text-muted small">${d.last_seen ? fmt(d.last_seen) : '—'}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteDevice(${d.id})">Remove</button>
+          </td>
+        </tr>
+      `).join('');
+    } catch {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load devices.</td></tr>';
+    }
+  }
+
+  // ── Register device ────────────────────────
+  async function registerDevice() {
+    const token_val = document.getElementById('newDeviceToken').value.trim();
+    if (!token_val) { showDeviceAlert('Enter a device token.', 'warning'); return; }
+    try {
+      const res  = await fetch('/admin/api/devices', {
+        method: 'POST', headers: authHeaders, body: JSON.stringify({ device_token: token_val }),
+      });
+      const data = await res.json();
+      showDeviceAlert(data.message || data.error, res.ok ? 'success' : 'danger');
+      if (res.ok) { document.getElementById('newDeviceToken').value = ''; loadDevices(); }
+    } catch { showDeviceAlert('Network error.', 'danger'); }
+  }
+
+  // ── Delete device ──────────────────────────
+  async function deleteDevice(id) {
+    if (!confirm('Remove this device?')) return;
+    try {
+      const res  = await fetch(`/admin/api/devices/${id}`, { method: 'DELETE', headers: authHeaders });
+      const data = await res.json();
+      showDeviceAlert(data.message || data.error, res.ok ? 'success' : 'danger');
+      if (res.ok) loadDevices();
+    } catch { showDeviceAlert('Network error.', 'danger'); }
+  }
+
+  // ── Admin send SMS ─────────────────────────
+  document.getElementById('adminSendForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const sendAlertBox = document.getElementById('sendAlertBox');
+    sendAlertBox.classList.add('d-none');
+
+    const group_id = document.getElementById('sendGroupId').value;
+    const to       = document.getElementById('sendTo').value.trim();
+    const message  = document.getElementById('sendMessage').value.trim();
+
+    if (!group_id || !to || !message) {
+      showSendAlert('Fill in all fields.', 'warning'); return;
+    }
+
+    const sendBtn = document.getElementById('sendBtn');
+    const spinner  = document.getElementById('sendSpinner');
+    sendBtn.disabled = true;
+    spinner.style.display = 'inline-block';
+
+    try {
+      const res  = await fetch('/admin/api/send-sms', {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ group_id: parseInt(group_id), to, message }),
+      });
+      const data = await res.json();
+      showSendAlert(
+        res.ok
+          ? (data.queued
+              ? `⏳ SMS #${data.smsId} queued — device offline, will send on reconnect.`
+              : `SMS #${data.smsId} queued for ${to}`)
+          : (data.error || 'Failed'),
+        res.ok ? (data.queued ? 'warning' : 'success') : 'danger'
+      );
+      if (res.ok) { document.getElementById('adminSendForm').reset(); loadOverview(); }
+    } catch { showSendAlert('Network error.', 'danger'); }
+
+    sendBtn.disabled = false;
+    spinner.style.display = 'none';
+  });
+
+  // ── Alert helpers ──────────────────────────
+  function showGroupAlert(msg, type)  { showAlert('groupAlertBox', msg, type); }
+  function showDeviceAlert(msg, type) { showAlert('deviceAlertBox', msg, type); }
+  function showSendAlert(msg, type)   { showAlert('sendAlertBox', msg, type); }
+  function showAlert(id, msg, type) {
+    const el = document.getElementById(id);
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+    el.classList.remove('d-none');
+  }
+
+  // ── Utilities ──────────────────────────────
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function fmt(d) { return d ? new Date(d).toLocaleString() : '—'; }
+
+  // ── Logout ─────────────────────────────────
+  function logout() {
+    localStorage.removeItem('admin_token');
+    document.cookie = 'admin_token=; path=/; max-age=0';
+    window.location.href = '/admin-login.html';
+  }
+
+  // ── Init ───────────────────────────────────
+  loadOverview();
+  loadGroups();
+  loadWsInfo();
+  setInterval(loadOverview, 30000);
+  setInterval(loadWsInfo, 15000);
+</script>
+</body>
+</html>
