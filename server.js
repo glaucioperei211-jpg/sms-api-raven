@@ -39,7 +39,7 @@ app.use('/admin', adminRoutes);
 
 // ── Root redirect ────────────────────────────
 app.get('/', (req, res) => {
-  res.redirect('/login.html');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 // ── 404 handler ──────────────────────────────
